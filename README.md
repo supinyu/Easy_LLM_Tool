@@ -1,2 +1,5 @@
-# NLP_LLM_notes
-主要记录NLP、LLM的相关知识的学习
+# Easy LLM Tool
+
+简单高效的大模型微调工具包
+
+
