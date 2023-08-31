@@ -137,7 +137,7 @@ def main():
         else getattr(torch, model_args.torch_dtype)
     )
 
-    if model_name == "baichuan-7B" or model_name == "Baichuan-13B-Chat":
+    if model_name == "baichuan-7B" or model_name == "Baichuan-13B-Chat" or model_name == "Qwen-7B-Chat":
         model = AutoModelForCausalLM.from_pretrained(model_args.model_name_or_path,
                                                      trust_remote_code=True,
                                                      torch_dtype=torch_dtype,
@@ -159,6 +159,11 @@ def main():
 
     if model_name == "baichuan-7B":
         tokenizer.pad_token_id = 0
+
+    if model_name == "Qwen-7B-Chat" or model_name == "Qwen-7B":
+        tokenizer.pad_token_id = tokenizer.eod_id
+        tokenizer.bos_token_id = tokenizer.eod_id
+        tokenizer.eos_token_id = tokenizer.eod_id
 
     if model_name == "Baichuan-13B-Chat":
         # model.supports_gradient_checkpointing = True  #节约cuda
@@ -309,11 +314,47 @@ def main():
 
         return model_inputs
 
+    def preprocess_function_train_qian_wen(examples):
+        max_seq_length = data_args.max_source_length + data_args.max_target_length
+
+        model_inputs = {
+            "input_ids": [],
+            "labels": [],
+        }
+        for i in range(len(examples["conversations"])):
+            if examples["conversations"][i]:
+                conversation = examples["conversations"][i]
+                utterances = []
+                for x in conversation:
+                    utterances.append(x['human'])
+                    utterances.append(x['assistant'])
+                utterances_ids = tokenizer(utterances, add_special_tokens=False).input_ids
+
+                input_ids = []
+                target_mask = []
+
+                for i, utterances_id in enumerate(utterances_ids):
+                    input_ids += (utterances_id + [tokenizer.eos_token_id])
+                    if i % 2 == 0:
+                        target_mask += [-100] * (len(utterances_id) + 1)
+                    else:
+                        target_mask += utterances_id + [tokenizer.eos_token_id]
+
+                assert len(input_ids) == len(target_mask)
+
+                input_ids = input_ids[:max_seq_length]
+                target_mask = target_mask[:max_seq_length]
+                model_inputs["input_ids"].append(input_ids)
+                model_inputs["labels"].append(target_mask)
+        return model_inputs
+
     train_data_process_dict = {
         "chatglm2-6b": preprocess_function_train_v2,
         "chatglm-6b": preprocess_function_train_v1,
         "baichuan-7B": preprocess_function_train_bai_chuan,
-        "Baichuan-13B-Chat": preprocess_function_train_bai_chuan
+        "Baichuan-13B-Chat": preprocess_function_train_bai_chuan,
+        "Qwen-7B-Chat" : preprocess_function_train_bai_chuan,
+        "Qwen-7B" : preprocess_function_train_qian_wen
     }
 
     def print_dataset_example(example):
